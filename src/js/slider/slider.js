@@ -1,6 +1,8 @@
 import Component from '../component.js';
-import * as Lib from '../lib.js';
+import * as Dom from '../utils/dom.js';
+import roundFloat from '../utils/round-float.js';
 import document from 'global/document';
+import assign from 'object.assign';
 
 /* Slider
 ================================================================================ */
@@ -21,7 +23,7 @@ class Slider extends Component {
     this.handle = this.getChild(this.options_['handleName']);
 
     // Set a horizontal or vertical class on the slider depending on the slider type
-    this.vertical(!!this.options()['vertical']);
+    this.vertical(!!this.options_['vertical']);
 
     this.on('mousedown', this.handleMouseDown);
     this.on('touchstart', this.handleMouseDown);
@@ -36,7 +38,7 @@ class Slider extends Component {
   createEl(type, props={}) {
     // Add the slider element class to all sub classes
     props.className = props.className + ' vjs-slider';
-    props = Lib.obj.merge({
+    props = assign({
       'role': 'slider',
       'aria-valuenow': 0,
       'aria-valuemin': 0,
@@ -49,7 +51,7 @@ class Slider extends Component {
 
   handleMouseDown(event) {
     event.preventDefault();
-    Lib.blockTextSelection();
+    Dom.blockTextSelection();
     this.addClass('vjs-sliding');
 
     this.on(document, 'mousemove', this.handleMouseMove);
@@ -64,7 +66,7 @@ class Slider extends Component {
   handleMouseMove() {}
 
   handleMouseUp() {
-    Lib.unblockTextSelection();
+    Dom.unblockTextSelection();
     this.removeClass('vjs-sliding');
 
     this.off(document, 'mousemove', this.handleMouseMove);
@@ -97,12 +99,8 @@ class Slider extends Component {
           progress = 0;
     }
 
-    // If there is a handle, we need to account for the handle in our calculation for progress bar
-    // so that it doesn't fall short of or extend past the handle.
-    let barProgress = this.updateHandlePosition(progress);
-
     // Convert to a percentage for setting
-    let percentage = Lib.round(barProgress * 100, 2) + '%';
+    let percentage = roundFloat(progress * 100, 2) + '%';
 
     // Set the new bar width or height
     if (this.vertical()) {
@@ -112,58 +110,14 @@ class Slider extends Component {
     }
   }
 
-  /**
-  * Update the handle position.
-  */
-  updateHandlePosition(progress) {
-    let handle = this.handle;
-    if (!handle) return;
-
-    let vertical = this.vertical();
-    let box = this.el_;
-
-    let boxSize, handleSize;
-    if (vertical) {
-      boxSize = box.offsetHeight;
-      handleSize = handle.el().offsetHeight;
-    } else {
-      boxSize = box.offsetWidth;
-      handleSize = handle.el().offsetWidth;
-    }
-
-    // The width of the handle in percent of the containing box
-    // In IE, widths may not be ready yet causing NaN
-    let handlePercent = (handleSize) ? handleSize / boxSize : 0;
-
-    // Get the adjusted size of the box, considering that the handle's center never touches the left or right side.
-    // There is a margin of half the handle's width on both sides.
-    let boxAdjustedPercent = 1 - handlePercent;
-
-    // Adjust the progress that we'll use to set widths to the new adjusted box width
-    let adjustedProgress = progress * boxAdjustedPercent;
-
-    // The bar does reach the left side, so we need to account for this in the bar's width
-    let barProgress = adjustedProgress + (handlePercent / 2);
-
-    let percentage = Lib.round(adjustedProgress * 100, 2) + '%';
-
-    if (vertical) {
-      handle.el().style.bottom = percentage;
-    } else {
-      handle.el().style.left = percentage;
-    }
-
-    return barProgress;
-  }
-
   calculateDistance(event){
     let el = this.el_;
-    let box = Lib.findPosition(el);
+    let box = Dom.findElPosition(el);
     let boxW = el.offsetWidth;
     let boxH = el.offsetHeight;
     let handle = this.handle;
 
-    if (this.options()['vertical']) {
+    if (this.options_['vertical']) {
       let boxY = box.top;
 
       let pageY;

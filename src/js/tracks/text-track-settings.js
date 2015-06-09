@@ -1,6 +1,7 @@
 import Component from '../component';
-import * as Lib from '../lib';
-import * as Events from '../events';
+import * as Events from '../utils/events.js';
+import * as Fn from '../utils/fn.js';
+import log from '../utils/log.js';
 import safeParseTuple from 'safe-json-parse/tuple';
 import window from 'global/window';
 
@@ -10,12 +11,17 @@ class TextTrackSettings extends Component {
     super(player, options);
     this.hide();
 
-    Events.on(this.el().querySelector('.vjs-done-button'), 'click', Lib.bind(this, function() {
+    // Grab `persistTextTrackSettings` from the player options if not passed in child options
+    if (options.persistTextTrackSettings === undefined) {
+      this.options_.persistTextTrackSettings = this.options_.playerOptions.persistTextTrackSettings;
+    }
+
+    Events.on(this.el().querySelector('.vjs-done-button'), 'click', Fn.bind(this, function() {
       this.saveSettings();
       this.hide();
     }));
 
-    Events.on(this.el().querySelector('.vjs-default-button'), 'click', Lib.bind(this, function() {
+    Events.on(this.el().querySelector('.vjs-default-button'), 'click', Fn.bind(this, function() {
       this.el().querySelector('.vjs-fg-color > select').selectedIndex = 0;
       this.el().querySelector('.vjs-bg-color > select').selectedIndex = 0;
       this.el().querySelector('.window-color > select').selectedIndex = 0;
@@ -28,17 +34,17 @@ class TextTrackSettings extends Component {
       this.updateDisplay();
     }));
 
-    Events.on(this.el().querySelector('.vjs-fg-color > select'), 'change', Lib.bind(this, this.updateDisplay));
-    Events.on(this.el().querySelector('.vjs-bg-color > select'), 'change', Lib.bind(this, this.updateDisplay));
-    Events.on(this.el().querySelector('.window-color > select'), 'change', Lib.bind(this, this.updateDisplay));
-    Events.on(this.el().querySelector('.vjs-text-opacity > select'), 'change', Lib.bind(this, this.updateDisplay));
-    Events.on(this.el().querySelector('.vjs-bg-opacity > select'), 'change', Lib.bind(this, this.updateDisplay));
-    Events.on(this.el().querySelector('.vjs-window-opacity > select'), 'change', Lib.bind(this, this.updateDisplay));
-    Events.on(this.el().querySelector('.vjs-font-percent select'), 'change', Lib.bind(this, this.updateDisplay));
-    Events.on(this.el().querySelector('.vjs-edge-style select'), 'change', Lib.bind(this, this.updateDisplay));
-    Events.on(this.el().querySelector('.vjs-font-family select'), 'change', Lib.bind(this, this.updateDisplay));
+    Events.on(this.el().querySelector('.vjs-fg-color > select'), 'change', Fn.bind(this, this.updateDisplay));
+    Events.on(this.el().querySelector('.vjs-bg-color > select'), 'change', Fn.bind(this, this.updateDisplay));
+    Events.on(this.el().querySelector('.window-color > select'), 'change', Fn.bind(this, this.updateDisplay));
+    Events.on(this.el().querySelector('.vjs-text-opacity > select'), 'change', Fn.bind(this, this.updateDisplay));
+    Events.on(this.el().querySelector('.vjs-bg-opacity > select'), 'change', Fn.bind(this, this.updateDisplay));
+    Events.on(this.el().querySelector('.vjs-window-opacity > select'), 'change', Fn.bind(this, this.updateDisplay));
+    Events.on(this.el().querySelector('.vjs-font-percent select'), 'change', Fn.bind(this, this.updateDisplay));
+    Events.on(this.el().querySelector('.vjs-edge-style select'), 'change', Fn.bind(this, this.updateDisplay));
+    Events.on(this.el().querySelector('.vjs-font-family select'), 'change', Fn.bind(this, this.updateDisplay));
 
-    if (player.options()['persistTextTrackSettings']) {
+    if (this.options_.persistTextTrackSettings) {
       this.restoreSettings();
     }
   }
@@ -107,7 +113,7 @@ class TextTrackSettings extends Component {
     let [err, values] = safeParseTuple(window.localStorage.getItem('vjs-text-track-settings'));
 
     if (err) {
-      Lib.log.error(err);
+      log.error(err);
     }
 
     if (values) {
@@ -116,13 +122,13 @@ class TextTrackSettings extends Component {
   }
 
   saveSettings() {
-    if (!this.player_.options()['persistTextTrackSettings']) {
+    if (!this.options_.persistTextTrackSettings) {
       return;
     }
 
     let values = this.getValues();
     try {
-      if (!Lib.isEmpty(values)) {
+      if (Object.getOwnPropertyNames(values).length > 0) {
         window.localStorage.setItem('vjs-text-track-settings', JSON.stringify(values));
       } else {
         window.localStorage.removeItem('vjs-text-track-settings');

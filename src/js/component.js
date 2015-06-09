@@ -3,10 +3,16 @@
  *
  */
 
-import * as Lib from './lib.js';
-import * as VjsUtil from './util.js';
-import * as Events from './events.js';
 import window from 'global/window';
+import * as Dom from './utils/dom.js';
+import * as Fn from './utils/fn.js';
+import * as Guid from './utils/guid.js';
+import * as Events from './utils/events.js';
+import log from './utils/log.js';
+import toTitleCase from './utils/to-title-case.js';
+import assign from 'object.assign';
+import mergeOptions from './utils/merge-options.js';
+
 
 /**
  * Base UI Component class
@@ -47,11 +53,11 @@ class Component {
       this.player_ = player;
     }
 
-    // Make a copy of prototype.options_ to protect against overriding global defaults
-    this.options_ = Lib.obj.copy(this.options_);
+    // Make a copy of prototype.options_ to protect against overriding defaults
+    this.options_ = mergeOptions({}, this.options_);
 
     // Updated options with supplied options
-    options = this.options(options);
+    options = this.options_ = mergeOptions(this.options_, options);
 
     // Get ID from options or options element if one is supplied
     this.id_ = options.id || (options.el && options.el.id);
@@ -60,7 +66,8 @@ class Component {
     if (!this.id_) {
       // Don't require the player ID function in the case of mock players
       let id = player && player.id && player.id() || 'no_player';
-      this.id_ = `${id}_component_${Lib.guid++}`;
+
+      this.id_ = `${id}_component_${Guid.newGUID()}`;
     }
 
     this.name_ = options.name || null;
@@ -124,7 +131,7 @@ class Component {
       this.el_.parentNode.removeChild(this.el_);
     }
 
-    Lib.removeData(this.el_);
+    Dom.removeElData(this.el_);
     this.el_ = null;
   }
 
@@ -141,7 +148,7 @@ class Component {
    * Deep merge of options objects
    *
    * Whenever a property is an object on both options objects
-   * the two properties will be merged using Lib.obj.deepMerge.
+   * the two properties will be merged using mergeOptions.
    *
    * This is used for merging options for child components. We
    * want it to be easy to override individual options on a child
@@ -179,11 +186,13 @@ class Component {
    * @return {Object}     A NEW object of this.options_ and obj merged
    */
   options(obj) {
+    log.warn('this.options() has been deprecated and will be moved to the constructor in 6.0');
+
     if (!obj) {
       return this.options_;
     }
 
-    this.options_ = VjsUtil.mergeOptions(this.options_, obj);
+    this.options_ = mergeOptions(this.options_, obj);
     return this.options_;
   }
 
@@ -206,15 +215,28 @@ class Component {
    * @return {Element}
    */
   createEl(tagName, attributes) {
-    return Lib.createEl(tagName, attributes);
+    return Dom.createEl(tagName, attributes);
   }
 
   localize(string) {
-    let lang = this.player_.language();
-    let languages = this.player_.languages();
+    let code = this.player_.language && this.player_.language();
+    let languages = this.player_.languages && this.player_.languages();
 
-    if (languages && languages[lang] && languages[lang][string]) {
-      return languages[lang][string];
+    if (!code || !languages) {
+      return string;
+    }
+
+    let language = languages[code];
+
+    if (language && language[string]) {
+      return language[string];
+    }
+
+    let primaryCode = code.split('-')[0];
+    let primaryLang = languages[primaryCode];
+
+    if (primaryLang && primaryLang[string]) {
+      return primaryLang[string];
     }
 
     return string;
@@ -324,13 +346,13 @@ class Component {
 
       // Same as above, but true is deprecated so show a warning.
       if (options === true) {
-        Lib.log.warn('Initializing a child component with `true` is deprecated. Children should be defined in an array when possible, but if necessary use an object instead of `true`.');
+        log.warn('Initializing a child component with `true` is deprecated. Children should be defined in an array when possible, but if necessary use an object instead of `true`.');
         options = {};
       }
 
       // If no componentClass in options, assume componentClass is the name lowercased
       // (e.g. playButton)
-      let componentClassName = options.componentClass || Lib.capitalize(componentName);
+      let componentClassName = options.componentClass || toTitleCase(componentName);
 
       // Set name through options
       options.name = componentName;
@@ -448,7 +470,8 @@ class Component {
 
     if (children) {
       // `this` is `parent`
-      let parentOptions = this.options();
+      let parentOptions = this.options_;
+
       let handleAdd = (name, opts) => {
         // Allow options for children to be set at the parent options
         // e.g. videojs(id, { controlBar: false });
@@ -463,6 +486,10 @@ class Component {
           return;
         }
 
+        // We also want to pass the original player options to each component as well so they don't need to
+        // reach back into the player for options later.
+        opts.playerOptions = this.options_.playerOptions;
+
         // Create and add the child component.
         // Add a direct reference to the child by name on the parent instance.
         // If two of the same component are used, different names should be supplied
@@ -471,7 +498,7 @@ class Component {
       };
 
       // Allow for an array of children details to passed in the options
-      if (Lib.obj.isArray(children)) {
+      if (Array.isArray(children)) {
         for (let i = 0; i < children.length; i++) {
           let child = children[i];
           let name;
@@ -490,7 +517,9 @@ class Component {
           handleAdd(name, opts);
         }
       } else {
-        Lib.obj.each(children, handleAdd);
+        Object.getOwnPropertyNames(children).forEach(function(name){
+          handleAdd(name, children[name]);
+        });
       }
     }
   }
@@ -539,14 +568,14 @@ class Component {
    * @return {Component}        self
    */
   on(first, second, third) {
-    if (typeof first === 'string' || Lib.obj.isArray(first)) {
-      Events.on(this.el_, first, Lib.bind(this, second));
+    if (typeof first === 'string' || Array.isArray(first)) {
+      Events.on(this.el_, first, Fn.bind(this, second));
 
     // Targeting another component or element
     } else {
       const target = first;
       const type = second;
-      const fn = Lib.bind(this, third);
+      const fn = Fn.bind(this, third);
 
       // When this component is disposed, remove the listener from the other component
       const removeOnDispose = () => this.off(target, type, fn);
@@ -603,13 +632,13 @@ class Component {
    * @return {Component}
    */
   off(first, second, third) {
-    if (!first || typeof first === 'string' || Lib.obj.isArray(first)) {
+    if (!first || typeof first === 'string' || Array.isArray(first)) {
       Events.off(this.el_, first, second);
     } else {
       const target = first;
       const type = second;
       // Ensure there's at least a guid, even if the function hasn't been used
-      const fn = Lib.bind(this, third);
+      const fn = Fn.bind(this, third);
 
       // Remove the dispose listener on this component,
       // which was given the same guid as the event listener
@@ -646,12 +675,12 @@ class Component {
    * @return {Component}
    */
   one(first, second, third) {
-    if (typeof first === 'string' || Lib.obj.isArray(first)) {
-      Events.one(this.el_, first, Lib.bind(this, second));
+    if (typeof first === 'string' || Array.isArray(first)) {
+      Events.one(this.el_, first, Fn.bind(this, second));
     } else {
       const target = first;
       const type = second;
-      const fn = Lib.bind(this, third);
+      const fn = Fn.bind(this, third);
 
       const newFunc = () => {
         this.off(target, type, newFunc);
@@ -672,12 +701,15 @@ class Component {
    *
    *     myComponent.trigger('eventName');
    *     myComponent.trigger({'type':'eventName'});
+   *     myComponent.trigger('eventName', {data: 'some data'});
+   *     myComponent.trigger({'type':'eventName'}, {data: 'some data'});
    *
    * @param  {Event|Object|String} event  A string (the type) or an event object with a type attribute
+   * @param  {Object} [hash] data hash to pass along with the event
    * @return {Component}       self
    */
-  trigger(event) {
-    Events.trigger(this.el_, event);
+  trigger(event, hash) {
+    Events.trigger(this.el_, event, hash);
     return this;
   }
 
@@ -693,7 +725,8 @@ class Component {
   ready(fn) {
     if (fn) {
       if (this.isReady_) {
-        fn.call(this);
+        // Ensure function is always called asynchronously
+        this.setTimeout(fn, 1);
       } else {
         this.readyQueue_ = this.readyQueue_ || [];
         this.readyQueue_.push(fn);
@@ -710,20 +743,22 @@ class Component {
   triggerReady() {
     this.isReady_ = true;
 
-    let readyQueue = this.readyQueue_;
+    // Ensure ready is triggerd asynchronously
+    this.setTimeout(function(){
+      let readyQueue = this.readyQueue_;
 
-    if (readyQueue && readyQueue.length > 0) {
+      if (readyQueue && readyQueue.length > 0) {
+        readyQueue.forEach(function(fn){
+          fn.call(this);
+        }, this);
 
-      for (let i = 0; i < readyQueue.length; i++) {
-        readyQueue[i].call(this);
+        // Reset Ready Queue
+        this.readyQueue_ = [];
       }
 
-      // Reset Ready Queue
-      this.readyQueue_ = [];
-
-      // Allow for using event listeners also, in case you want to do something everytime a source is ready.
+      // Allow for using event listeners also
       this.trigger('ready');
-    }
+    }, 1);
   }
 
   /**
@@ -733,7 +768,7 @@ class Component {
    * @return {Component}
    */
   hasClass(classToCheck) {
-    return Lib.hasClass(this.el_, classToCheck);
+    return Dom.hasElClass(this.el_, classToCheck);
   }
 
   /**
@@ -743,7 +778,7 @@ class Component {
    * @return {Component}
    */
   addClass(classToAdd) {
-    Lib.addClass(this.el_, classToAdd);
+    Dom.addElClass(this.el_, classToAdd);
     return this;
   }
 
@@ -754,7 +789,7 @@ class Component {
    * @return {Component}
    */
   removeClass(classToRemove) {
-    Lib.removeClass(this.el_, classToRemove);
+    Dom.removeElClass(this.el_, classToRemove);
     return this;
   }
 
@@ -909,20 +944,7 @@ class Component {
     // No px so using % or no style was set, so falling back to offsetWidth/height
     // If component has display:none, offset will return 0
     // TODO: handle display:none and no dimension style using px
-    return parseInt(this.el_['offset' + Lib.capitalize(widthOrHeight)], 10);
-
-    // ComputedStyle version.
-    // Only difference is if the element is hidden it will return
-    // the percent value (e.g. '100%'')
-    // instead of zero like offsetWidth returns.
-    // var val = Lib.getComputedStyleValue(this.el_, widthOrHeight);
-    // var pxIndex = val.indexOf('px');
-
-    // if (pxIndex !== -1) {
-    //   return val.slice(0, pxIndex);
-    // } else {
-    //   return val;
-    // }
+    return parseInt(this.el_['offset' + toTitleCase(widthOrHeight)], 10);
   }
 
   /**
@@ -952,7 +974,8 @@ class Component {
     this.on('touchstart', function(event) {
       // If more than one finger, don't consider treating this as a click
       if (event.touches.length === 1) {
-        firstTouch = Lib.obj.copy(event.touches[0]);
+        // Copy the touches object to prevent modifying the original
+        firstTouch = assign({}, event.touches[0]);
         // Record start time so we can detect a tap vs. "touch and hold"
         touchStart = new Date().getTime();
         // Reset couldBeTap tracking
@@ -1001,7 +1024,7 @@ class Component {
           this.trigger('tap');
           // It may be good to copy the touchend event object and change the
           // type to tap, if the other event properties aren't exact after
-          // Lib.fixEvent runs (e.g. event.target)
+          // Events.fixEvent runs (e.g. event.target)
         }
       }
     });
@@ -1037,7 +1060,7 @@ class Component {
     }
 
     // listener for reporting that the user is active
-    const report = Lib.bind(this.player(), this.player().reportUserActivity);
+    const report = Fn.bind(this.player(), this.player().reportUserActivity);
 
     let touchHolding;
 
@@ -1069,7 +1092,7 @@ class Component {
    * @return {Number} Returns the timeout ID
    */
   setTimeout(fn, timeout) {
-    fn = Lib.bind(this, fn);
+    fn = Fn.bind(this, fn);
 
     // window.setTimeout would be preferable here, but due to some bizarre issue with Sinon and/or Phantomjs, we can't.
     let timeoutId = window.setTimeout(fn, timeout);
@@ -1109,7 +1132,7 @@ class Component {
    * @return {Number} Returns the interval ID
    */
   setInterval(fn, interval) {
-    fn = Lib.bind(this, fn);
+    fn = Fn.bind(this, fn);
 
     let intervalId = window.setInterval(fn, interval);
 
@@ -1156,7 +1179,7 @@ class Component {
     }
 
     if (window && window.videojs && window.videojs[name]) {
-      Lib.log.warn(`The ${name} component was added to the videojs object when it should be registered using videojs.registerComponent(name, component)`);
+      log.warn(`The ${name} component was added to the videojs object when it should be registered using videojs.registerComponent(name, component)`);
       return window.videojs[name];
     }
   }
@@ -1181,7 +1204,7 @@ class Component {
     };
 
     // Inherit from this object's prototype
-    subObj.prototype = Lib.obj.create(this.prototype);
+    subObj.prototype = Object.create(this.prototype);
     // Reset the constructor property for subObj otherwise
     // instances of subObj would have the constructor of the parent Object
     subObj.prototype.constructor = subObj;

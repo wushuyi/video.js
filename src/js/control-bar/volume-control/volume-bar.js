@@ -1,8 +1,9 @@
 import Slider from '../../slider/slider.js';
-import * as Lib from '../../lib.js';
+import Component from '../../component.js';
+import * as Fn from '../../utils/fn.js';
+import roundFloat from '../../utils/round-float.js';
 
 // Required children
-import VolumeHandle from './volume-handle.js';
 import VolumeLevel from './volume-level.js';
 
 /**
@@ -17,7 +18,7 @@ class VolumeBar extends Slider {
   constructor(player, options){
     super(player, options);
     this.on(player, 'volumechange', this.updateARIAAttributes);
-    player.ready(Lib.bind(this, this.updateARIAAttributes));
+    player.ready(Fn.bind(this, this.updateARIAAttributes));
   }
 
   createEl() {
@@ -53,22 +54,20 @@ class VolumeBar extends Slider {
 
   updateARIAAttributes() {
     // Current value of volume bar as a percentage
-    this.el_.setAttribute('aria-valuenow', Lib.round(this.player_.volume()*100, 2));
-    this.el_.setAttribute('aria-valuetext', Lib.round(this.player_.volume()*100, 2)+'%');
+    this.el_.setAttribute('aria-valuenow', roundFloat(this.player_.volume()*100, 2));
+    this.el_.setAttribute('aria-valuetext', roundFloat(this.player_.volume()*100, 2)+'%');
   }
 
 }
 
 VolumeBar.prototype.options_ = {
   children: {
-    'volumeLevel': {},
-    'volumeHandle': {}
+    'volumeLevel': {}
   },
-  'barName': 'volumeLevel',
-  'handleName': 'volumeHandle'
+  'barName': 'volumeLevel'
 };
 
 VolumeBar.prototype.playerEvent = 'volumechange';
 
-Slider.registerComponent('VolumeBar', VolumeBar);
+Component.registerComponent('VolumeBar', VolumeBar);
 export default VolumeBar;

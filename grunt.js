@@ -89,64 +89,12 @@ module.exports = function(grunt) {
           {expand: true, cwd: 'build/temp/', src: ['*'], dest: 'dist/'+version.full+'/', filter: 'isFile'} // includes files in path
         ]
       },
-      fonts: { expand: true, cwd: 'src/css/font/', src: ['*'], dest: 'build/temp/font/', filter: 'isFile' },
-      swf: { src: './node_modules/videojs-swf/dist/video-js.swf', dest: './build/temp/video-js.swf' },
-      novtt: { src: './build/temp/video.js', dest: './build/temp/alt/video.novtt.js' },
-      dist: { expand: true, cwd: 'build/temp/', src: ['**/**'], dest: 'dist/', filter: 'isFile' },
-      examples: { expand: true, cwd: 'build/examples/', src: ['**/**'], dest: 'dist/examples/', filter: 'isFile' },
-      cdn: { expand: true, cwd: 'dist/', src: ['**/**'], dest: 'dist/cdn/', filter: 'isFile' },
-    },
-    aws_s3: {
-      options: {
-        accessKeyId: process.env.VJS_S3_KEY,
-        secretAccessKey: process.env.VJS_S3_SECRET,
-        bucket: process.env.VJS_S3_BUCKET,
-        access: 'public-read',
-        uploadConcurrency: 5
-      },
-      patch: {
-        files: [
-          {
-            expand: true,
-            cwd: 'dist/cdn/',
-            src: ['**'],
-            dest: 'vjs/'+version.full+'/',
-            params: { CacheControl: 'public, max-age=31536000' }
-          }
-        ]
-      },
-      minor: {
-        files: [
-          {
-            expand: true,
-            cwd: 'dist/cdn/',
-            src: ['**'],
-            dest: 'vjs/'+version.majorMinor+'/',
-            params: { CacheControl: 'public, max-age=2628000' }
-          }
-        ]
-      }
-    },
-    fastly: {
-      options: {
-        key: process.env.VJS_FASTLY_API_KEY
-      },
-      minor: {
-        options: {
-          host: 'vjs.zencdn.net',
-          urls: [
-            version.majorMinor+'/*'
-          ]
-        }
-      },
-      patch: {
-        options: {
-          host: 'vjs.zencdn.net',
-          urls: [
-            version.full+'/*'
-          ]
-        }
-      }
+      fonts: { cwd: 'node_modules/videojs-font/fonts/', src: ['*'], dest: 'build/temp/font/', expand: true, filter: 'isFile' },
+      swf:   { cwd: 'node_modules/videojs-swf/dist/', src: 'video-js.swf', dest: 'build/temp/', expand: true, filter: 'isFile' },
+      ie8:   { cwd: 'node_modules/videojs-ie8/dist/', src: ['**/**'], dest: 'build/temp/ie8/', expand: true, filter: 'isFile' },
+      novtt: { cwd: 'build/temp/', src: 'video.novtt.js', dest: 'build/temp/alt/', expand: true, filter: 'isFile' },
+      dist:  { cwd: 'build/temp/', src: ['**/**', '!test*'], dest: 'dist/', expand: true, filter: 'isFile' },
+      examples: { cwd: 'docs/examples/', src: ['**/**'], dest: 'dist/examples/', expand: true, filter: 'isFile' }
     },
     cssmin: {
       minify: {
@@ -226,25 +174,25 @@ module.exports = function(grunt) {
         options: {
           release: 'major'
         },
-        src: ['package.json', 'bower.json', 'component.json']
+        src: ['package.json', 'component.json']
       },
       minor: {
         options: {
           release: 'minor'
         },
-        src: ['package.json', 'bower.json', 'component.json']
+        src: ['package.json', 'component.json']
       },
       patch: {
         options: {
           release: 'patch'
         },
-        src: ['package.json', 'bower.json', 'component.json']
+        src: ['package.json', 'component.json']
       },
       prerelease: {
         options: {
           release: 'prerelease'
         },
-        src: ['package.json', 'bower.json', 'component.json']
+        src: ['package.json', 'component.json']
       },
       css: {
         options: {
@@ -286,7 +234,8 @@ module.exports = function(grunt) {
           ],
           transform: [
             require('babelify').configure({
-              sourceMapRelative: './src/js'
+              sourceMapRelative: './src/js',
+              loose: 'all'
             }),
             ['browserify-versionify', {
               placeholder: '__VERSION__',
@@ -387,6 +336,7 @@ module.exports = function(grunt) {
     'cssmin',
     'copy:fonts',
     'copy:swf',
+    'copy:ie8',
     'vjslanguages'
   ]);
 
@@ -398,12 +348,6 @@ module.exports = function(grunt) {
     'zip:dist'
   ]);
 
-  grunt.registerTask('cdn', [
-    'dist',
-    'copy:cdn',
-    'dist-cdn'
-  ]);
-
   // Remove this and add to the test task once mmcc's coverall changes are merged
   grunt.registerTask('newtest', ['build', 'karma:chrome']);
 
@@ -411,7 +355,7 @@ module.exports = function(grunt) {
   grunt.registerTask('default', ['build', 'test-local']);
 
   // Development watch task. Doing the minimum required.
-  grunt.registerTask('dev', ['connect:dev', 'jshint', 'sass', 'browserify:build', 'karma:chrome']);
+  grunt.registerTask('dev', ['jshint', 'sass', 'browserify:build', 'karma:chrome']);
 
   // Skin development watch task.
   grunt.registerTask('skin-dev', ['connect:dev', 'watch:skin']);

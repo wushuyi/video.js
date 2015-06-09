@@ -1,7 +1,9 @@
 import Component from './component';
-import * as Lib from './lib';
-import * as Events from './events';
+import * as Dom from './utils/dom.js';
+import * as Events from './utils/events.js';
+import * as Fn from './utils/fn.js';
 import document from 'global/document';
+import assign from 'object.assign';
 
 /* Button - Base class for all buttons
 ================================================================================ */
@@ -25,9 +27,9 @@ class Button extends Component {
     this.on('blur', this.handleBlur);
   }
 
-  createEl(type, props) {
+  createEl(type='button', props={}) {
     // Add standard Aria and Tabindex info
-    props = Lib.obj.merge({
+    props = assign({
       className: this.buildCSSClass(),
       'role': 'button',
       'aria-live': 'polite', // let the screen reader user know that the text of the button may change
@@ -36,22 +38,24 @@ class Button extends Component {
 
     let el = super.createEl(type, props);
 
-    // if innerHTML hasn't been overridden (bigPlayButton), add content elements
-    if (!props.innerHTML) {
-      this.contentEl_ = Lib.createEl('div', {
-        className: 'vjs-control-content'
-      });
+    this.controlTextEl_ = Dom.createEl('span', {
+      className: 'vjs-control-text'
+    });
 
-      this.controlText_ = Lib.createEl('span', {
-        className: 'vjs-control-text',
-        innerHTML: this.localize(this.buttonText) || 'Need Text'
-      });
+    el.appendChild(this.controlTextEl_);
 
-      this.contentEl_.appendChild(this.controlText_);
-      el.appendChild(this.contentEl_);
-    }
+    this.controlText(this.controlText_);
 
     return el;
+  }
+
+  controlText(text) {
+    if (!text) return this.controlText_ || 'Need Text';
+
+    this.controlText_ = text;
+    this.controlTextEl_.innerHTML = this.localize(this.controlText_);
+
+    return this;
   }
 
   buildCSSClass() {
@@ -63,7 +67,7 @@ class Button extends Component {
 
   // Focus - Add keyboard functionality to element
   handleFocus() {
-    Events.on(document, 'keydown', Lib.bind(this, this.handleKeyPress));
+    Events.on(document, 'keydown', Fn.bind(this, this.handleKeyPress));
   }
 
   // KeyPress (document level) - Trigger click when keys are pressed
@@ -77,7 +81,7 @@ class Button extends Component {
 
   // Blur - Remove keyboard triggers
   handleBlur() {
-    Events.off(document, 'keydown', Lib.bind(this, this.handleKeyPress));
+    Events.off(document, 'keydown', Fn.bind(this, this.handleKeyPress));
   }
 
 }

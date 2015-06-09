@@ -1,6 +1,6 @@
 import MenuItem from '../../menu/menu-item.js';
-import * as Lib from '../../lib.js';
-
+import Component from '../../component.js';
+import * as Fn from '../../utils/fn.js';
 import window from 'global/window';
 import document from 'global/document';
 
@@ -23,7 +23,7 @@ class TextTrackMenuItem extends MenuItem {
     this.track = track;
 
     if (tracks) {
-      let changeHandler = Lib.bind(this, this.handleTracksChange);
+      let changeHandler = Fn.bind(this, this.handleTracksChange);
 
       tracks.addEventListener('change', changeHandler);
       this.on('dispose', function() {
@@ -87,5 +87,5 @@ class TextTrackMenuItem extends MenuItem {
 
 }
 
-MenuItem.registerComponent('TextTrackMenuItem', TextTrackMenuItem);
+Component.registerComponent('TextTrackMenuItem', TextTrackMenuItem);
 export default TextTrackMenuItem;

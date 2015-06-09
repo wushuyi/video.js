@@ -1,7 +1,8 @@
 import MenuButton from '../../menu/menu-button.js';
 import Menu from '../../menu/menu.js';
 import PlaybackRateMenuItem from './playback-rate-menu-item.js';
-import * as Lib from '../../lib.js';
+import Component from '../../component.js';
+import * as Dom from '../../utils/dom.js';
 
 /**
  * The component for controlling the playback rate
@@ -25,7 +26,7 @@ class PlaybackRateMenuButton extends MenuButton {
   createEl() {
     let el = super.createEl();
 
-    this.labelEl_ = Lib.createEl('div', {
+    this.labelEl_ = Dom.createEl('div', {
       className: 'vjs-playback-rate-value',
       innerHTML: 1.0
     });
@@ -35,10 +36,14 @@ class PlaybackRateMenuButton extends MenuButton {
     return el;
   }
 
+  buildCSSClass() {
+    return `vjs-playback-rate ${super.buildCSSClass()}`;
+  }
+
   // Menu creation
   createMenu() {
     let menu = new Menu(this.player());
-    let rates = this.player().options()['playbackRates'];
+    let rates = this.playbackRates();
 
     if (rates) {
       for (let i = rates.length - 1; i >= 0; i--) {
@@ -59,10 +64,11 @@ class PlaybackRateMenuButton extends MenuButton {
   handleClick() {
     // select next rate option
     let currentRate = this.player().playbackRate();
-    let rates = this.player().options()['playbackRates'];
+    let rates = this.playbackRates();
+
     // this will select first one if the last one currently selected
     let newRate = rates[0];
-    for (let i = 0; i <rates.length ; i++) {
+    for (let i = 0; i < rates.length ; i++) {
       if (rates[i] > currentRate) {
         newRate = rates[i];
         break;
@@ -71,11 +77,15 @@ class PlaybackRateMenuButton extends MenuButton {
     this.player().playbackRate(newRate);
   }
 
+  playbackRates() {
+    return this.options_['playbackRates'] || (this.options_.playerOptions && this.options_.playerOptions['playbackRates']);
+  }
+
   playbackRateSupported() {
     return this.player().tech
       && this.player().tech['featuresPlaybackRate']
-      && this.player().options()['playbackRates']
-      && this.player().options()['playbackRates'].length > 0
+      && this.playbackRates()
+      && this.playbackRates().length > 0
     ;
   }
 
@@ -101,8 +111,7 @@ class PlaybackRateMenuButton extends MenuButton {
 
 }
 
-PlaybackRateMenuButton.prototype.buttonText = 'Playback Rate';
-PlaybackRateMenuButton.prototype.className = 'vjs-playback-rate';
+PlaybackRateMenuButton.prototype.controlText_ = 'Playback Rate';
 
-MenuButton.registerComponent('PlaybackRateMenuButton', PlaybackRateMenuButton);
+Component.registerComponent('PlaybackRateMenuButton', PlaybackRateMenuButton);
 export default PlaybackRateMenuButton;

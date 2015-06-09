@@ -1,6 +1,9 @@
 import Button from '../button.js';
+import Component from '../component.js';
 import Menu from './menu.js';
-import * as Lib from '../lib.js';
+import * as Dom from '../utils/dom.js';
+import * as Fn from '../utils/fn.js';
+import toTitleCase from '../utils/to-title-case.js';
 
 /**
  * A button class with a popup menu
@@ -48,11 +51,11 @@ class MenuButton extends Button {
     var menu = new Menu(this.player_);
 
     // Add a title list item to the top
-    if (this.options().title) {
-      menu.contentEl().appendChild(Lib.createEl('li', {
+    if (this.options_.title) {
+      menu.contentEl().appendChild(Dom.createEl('li', {
         className: 'vjs-menu-title',
-        innerHTML: Lib.capitalize(this.options().title),
-        tabindex: -1
+        innerHTML: toTitleCase(this.options_.title),
+        tabIndex: -1
       }));
     }
 
@@ -73,9 +76,15 @@ class MenuButton extends Button {
    */
   createItems(){}
 
+  createEl() {
+    return super.createEl('div', {
+      className: this.buildCSSClass()
+    });
+  }
+
   /** @inheritDoc */
   buildCSSClass() {
-    return `${this.className} vjs-menu-button ${super.buildCSSClass()}`;
+    return `vjs-menu-button ${super.buildCSSClass()}`;
   }
 
   // Focus - Add keyboard functionality to element
@@ -91,7 +100,7 @@ class MenuButton extends Button {
     // When you click the button it adds focus, which will show the menu indefinitely.
     // So we'll remove focus when the mouse leaves the button.
     // Focus is needed for tab navigation.
-    this.one('mouseout', Lib.bind(this, function(){
+    this.one('mouseout', Fn.bind(this, function(){
       this.menu.unlockShowing();
       this.el_.blur();
     }));
@@ -137,5 +146,5 @@ class MenuButton extends Button {
   }
 }
 
-Button.registerComponent('MenuButton', MenuButton);
+Component.registerComponent('MenuButton', MenuButton);
 export default MenuButton;

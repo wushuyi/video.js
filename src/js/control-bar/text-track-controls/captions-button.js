@@ -1,4 +1,5 @@
 import TextTrackButton from './text-track-button.js';
+import Component from '../../component.js';
 import CaptionSettingsMenuItem from './caption-settings-menu-item.js';
 
 /**
@@ -11,6 +12,10 @@ class CaptionsButton extends TextTrackButton {
   constructor(player, options, ready){
     super(player, options, ready);
     this.el_.setAttribute('aria-label','Captions Menu');
+  }
+
+  buildCSSClass() {
+    return `vjs-captions-button ${super.buildCSSClass()}`;
   }
 
   update() {
@@ -42,8 +47,7 @@ class CaptionsButton extends TextTrackButton {
 }
 
 CaptionsButton.prototype.kind_ = 'captions';
-CaptionsButton.prototype.buttonText = 'Captions';
-CaptionsButton.prototype.className = 'vjs-captions-button';
+CaptionsButton.prototype.controlText_ = 'Captions';
 
-TextTrackButton.registerComponent('CaptionsButton', CaptionsButton);
+Component.registerComponent('CaptionsButton', CaptionsButton);
 export default CaptionsButton;

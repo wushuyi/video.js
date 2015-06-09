@@ -1,4 +1,5 @@
-import Button from './button';
+import Button from './button.js';
+import Component from './component.js';
 
 /* Big Play Button
 ================================================================================ */
@@ -12,12 +13,8 @@ import Button from './button';
  */
 class BigPlayButton extends Button {
 
-  createEl() {
-    return super.createEl('div', {
-      className: 'vjs-big-play-button',
-      innerHTML: '<span aria-hidden="true"></span>',
-      'aria-label': 'play video'
-    });
+  buildCSSClass() {
+    return 'vjs-big-play-button';
   }
 
   handleClick() {
@@ -26,5 +23,7 @@ class BigPlayButton extends Button {
 
 }
 
-Button.registerComponent('BigPlayButton', BigPlayButton);
+BigPlayButton.prototype.controlText_ = 'Play Video';
+
+Component.registerComponent('BigPlayButton', BigPlayButton);
 export default BigPlayButton;

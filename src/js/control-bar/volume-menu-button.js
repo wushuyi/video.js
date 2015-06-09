@@ -1,8 +1,8 @@
 import Button from '../button.js';
+import Component from '../component.js';
 import Menu from '../menu/menu.js';
 import MenuButton from '../menu/menu-button.js';
 import MuteToggle from './mute-toggle.js';
-import * as Lib from '../lib.js';
 import VolumeBar from './volume-control/volume-bar.js';
 
 /**
@@ -31,6 +31,10 @@ class VolumeMenuButton extends MenuButton {
     this.addClass('vjs-menu-button');
   }
 
+  buildCSSClass() {
+    return `vjs-volume-menu-button ${super.buildCSSClass()}`;
+  }
+
   createMenu() {
     let menu = new Menu(this.player_, {
       contentElType: 'div'
@@ -57,16 +61,10 @@ class VolumeMenuButton extends MenuButton {
     super.handleClick();
   }
 
-  createEl() {
-    return super.createEl('div', {
-      className: 'vjs-volume-menu-button vjs-menu-button vjs-control vjs-button',
-      innerHTML: `<div><span class="vjs-control-text">${this.localize('Mute')}</span></div>`
-    });
-  }
-
 }
 
 VolumeMenuButton.prototype.volumeUpdate = MuteToggle.prototype.update;
+VolumeMenuButton.prototype.controlText_ = 'Mute';
 
-Button.registerComponent('VolumeMenuButton', VolumeMenuButton);
+Component.registerComponent('VolumeMenuButton', VolumeMenuButton);
 export default VolumeMenuButton;

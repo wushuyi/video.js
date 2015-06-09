@@ -1,5 +1,6 @@
 import MenuItem from '../../menu/menu-item.js';
-import * as Lib from '../../lib.js';
+import Component from '../../component.js';
+import * as Fn from '../../utils/fn.js';
 
 /**
  * @constructor
@@ -18,7 +19,7 @@ class ChaptersTrackMenuItem extends MenuItem {
 
     this.track = track;
     this.cue = cue;
-    track.addEventListener('cuechange', Lib.bind(this, this.update));
+    track.addEventListener('cuechange', Fn.bind(this, this.update));
   }
 
   handleClick() {
@@ -37,5 +38,5 @@ class ChaptersTrackMenuItem extends MenuItem {
 
 }
 
-MenuItem.registerComponent('ChaptersTrackMenuItem', ChaptersTrackMenuItem);
+Component.registerComponent('ChaptersTrackMenuItem', ChaptersTrackMenuItem);
 export default ChaptersTrackMenuItem;

@@ -1,6 +1,6 @@
 import Button from '../button';
 import Component from '../component';
-import * as Lib from '../lib';
+import * as Dom from '../utils/dom.js';
 
 /**
  * A button component for muting the audio
@@ -30,13 +30,6 @@ class MuteToggle extends Button {
     });
   }
 
-  createEl() {
-    return super.createEl('div', {
-      className: this.buildCSSClass(),
-      innerHTML: `<div><span class="vjs-control-text">${this.localize('Mute')}</span></div>`
-    });
-  }
-
   buildCSSClass() {
     return `vjs-mute-control ${super.buildCSSClass()}`;
   }
@@ -62,18 +55,20 @@ class MuteToggle extends Button {
     // This check is needed because this function gets called every time the volume level is changed.
     let toMute = this.player_.muted() ? 'Unmute' : 'Mute';
     let localizedMute = this.localize(toMute);
-    if (this.el_.children[0].children[0].innerHTML !== localizedMute) {
-      this.el_.children[0].children[0].innerHTML = localizedMute;
+    if (this.controlText() !== localizedMute) {
+      this.controlText(localizedMute);
     }
 
     /* TODO improve muted icon classes */
     for (var i = 0; i < 4; i++) {
-      Lib.removeClass(this.el_, `vjs-vol-${i}`);
+      Dom.removeElClass(this.el_, `vjs-vol-${i}`);
     }
-    Lib.addClass(this.el_, `vjs-vol-${level}`);
+    Dom.addElClass(this.el_, `vjs-vol-${level}`);
   }
 
 }
+
+MuteToggle.prototype.controlText_ = 'Mute';
 
 Component.registerComponent('MuteToggle', MuteToggle);
 export default MuteToggle;

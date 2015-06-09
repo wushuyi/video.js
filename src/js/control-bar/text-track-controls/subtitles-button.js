@@ -1,4 +1,5 @@
 import TextTrackButton from './text-track-button.js';
+import Component from '../../component.js';
 
 /**
  * The button component for toggling and selecting subtitles
@@ -12,11 +13,14 @@ class SubtitlesButton extends TextTrackButton {
     this.el_.setAttribute('aria-label','Subtitles Menu');
   }
 
+  buildCSSClass() {
+    return `vjs-subtitles-button ${super.buildCSSClass()}`;
+  }
+
 }
 
 SubtitlesButton.prototype.kind_ = 'subtitles';
-SubtitlesButton.prototype.buttonText = 'Subtitles';
-SubtitlesButton.prototype.className = 'vjs-subtitles-button';
+SubtitlesButton.prototype.controlText_ = 'Subtitles';
 
-TextTrackButton.registerComponent('SubtitlesButton', SubtitlesButton);
+Component.registerComponent('SubtitlesButton', SubtitlesButton);
 export default SubtitlesButton;

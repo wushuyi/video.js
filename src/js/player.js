@@ -1,23 +1,35 @@
+// Subclasses Component
 import Component from './component.js';
-import * as Lib from './lib.js';
-import * as Events from './events.js';
+
+import document from 'global/document';
+import window from 'global/window';
+import * as Events from './utils/events.js';
+import * as Dom from './utils/dom.js';
+import * as Fn from './utils/fn.js';
+import * as Guid from './utils/guid.js';
+import * as browser from './utils/browser.js';
+import log from './utils/log.js';
+import toTitleCase from './utils/to-title-case.js';
+import { createTimeRange } from './utils/time-ranges.js';
+import { bufferedPercent } from './utils/buffer.js';
 import FullscreenApi from './fullscreen-api.js';
 import MediaError from './media-error.js';
-import Options from './options.js';
+import globalOptions from './global-options.js';
 import safeParseTuple from 'safe-json-parse/tuple';
-import window from 'global/window';
-import document from 'global/document';
+import assign from 'object.assign';
+import mergeOptions from './utils/merge-options.js';
 
-// Include required child components
+// Include required child components (importing also registers them)
 import MediaLoader from './tech/loader.js';
-import Poster from './poster-image.js';
+import PosterImage from './poster-image.js';
 import TextTrackDisplay from './tracks/text-track-display.js';
 import LoadingSpinner from './loading-spinner.js';
 import BigPlayButton from './big-play-button.js';
-import controlBar from './control-bar/control-bar.js';
+import ControlBar from './control-bar/control-bar.js';
 import ErrorDisplay from './error-display.js';
 import TextTrackSettings from './tracks/text-track-settings.js';
-// Require html5 for disposing the original video tag
+
+// Require html5 tech, at least for disposing the original video tag
 import Html5 from './tech/html5.js';
 
 /**
@@ -53,14 +65,14 @@ class Player extends Component {
    */
   constructor(tag, options, ready){
     // Make sure tag ID exists
-    tag.id = tag.id || `vjs_video_${Lib.guid++}`;
+    tag.id = tag.id || `vjs_video_${Guid.newGUID()}`;
 
     // Set Options
     // The options argument overrides options set in the video tag
     // which overrides globally set options.
     // This latter part coincides with the load order
     // (tag must exist before Player)
-    options = Lib.obj.merge(Player.getTagSettings(tag), options);
+    options = assign(Player.getTagSettings(tag), options);
 
     // Delay the initialization of children because we need to set up
     // player properties first, and can't use `this` before `super()`
@@ -90,13 +102,23 @@ class Player extends Component {
     this.tag = tag; // Store the original tag used to set options
 
     // Store the tag attributes used to restore html5 element
-    this.tagAttributes = tag && Lib.getElementAttributes(tag);
+    this.tagAttributes = tag && Dom.getElAttributes(tag);
 
-    // Update Current Language
-    this.language_ = options['language'] || Options['language'];
+    // Update current language
+    this.language(options.language || globalOptions.language);
 
     // Update Supported Languages
-    this.languages_ = options['languages'] || Options['languages'];
+    if (options['languages']) {
+      // Normalise player option languages to lowercase
+      let languagesToLower = {};
+
+      Object.getOwnPropertyNames(options['languages']).forEach(function(name) {
+        languagesToLower[name.toLowerCase()] = options['languages'][name];
+      });
+      this.languages_ = languagesToLower;
+    } else {
+      this.languages_ = globalOptions['languages'];
+    }
 
     // Cache for video property values.
     this.cache_ = {};
@@ -120,12 +142,23 @@ class Player extends Component {
 
     this.el_ = this.createEl();
 
+    // We also want to pass the original player options to each component and plugin
+    // as well so they don't need to reach back into the player for options later.
+    // We also need to do another copy of this.options_ so we don't end up with
+    // an infinite loop.
+    let playerOptionsCopy = mergeOptions({}, this.options_);
+
     // Load plugins
     if (options['plugins']) {
-      Lib.obj.each(options['plugins'], function(key, val){
-        this[key](val);
+      let plugins = options['plugins'];
+
+      Object.getOwnPropertyNames(plugins).forEach(function(name){
+        plugins[name].playerOptions = playerOptionsCopy;
+        this[name](plugins[name]);
       }, this);
     }
+
+    this.options_.playerOptions = playerOptionsCopy;
 
     this.initChildren();
 
@@ -150,7 +183,7 @@ class Player extends Component {
 
     // TODO: Make this smarter. Toggle user state between touching/mousing
     // using events, since devices can have both touch and mouse events.
-    // if (Lib.TOUCH_ENABLED) {
+    // if (browser.TOUCH_ENABLED) {
     //   this.addClass('vjs-touch-enabled');
     // }
 
@@ -200,8 +233,9 @@ class Player extends Component {
 
     // Copy over all the attributes from the tag, including ID and class
     // ID will now reference player box, not the video tag
-    const attrs = Lib.getElementAttributes(tag);
-    Lib.obj.each(attrs, function(attr) {
+    const attrs = Dom.getElAttributes(tag);
+
+    Object.getOwnPropertyNames(attrs).forEach(function(attr){
       // workaround so we don't totally break IE7
       // http://stackoverflow.com/questions/3653444/css-styles-not-applied-on-dynamic-elements-in-internet-explorer-7
       if (attr === 'class') {
@@ -222,12 +256,19 @@ class Player extends Component {
     // Default state of video is paused
     this.addClass('vjs-paused');
 
-    // Make box use width/height of tag, or rely on default implementation
-    // Enforce with CSS since width/height attrs don't work on divs
-    this.width(this.options_['width'], true); // (true) Skip resize listener on load
-    this.height(this.options_['height'], true);
+    // Add a style element in the player that we'll use to set the width/height
+    // of the player in a way that's still overrideable by CSS, just like the
+    // video element
+    this.styleEl_ = document.createElement('style');
+    el.appendChild(this.styleEl_);
 
-    // Lib.insertFirst seems to cause the networkState to flicker from 3 to 2, so
+    // Pass in the width/height/aspectRatio options which will update the style el
+    this.width(this.options_['width']);
+    this.height(this.options_['height']);
+    this.fluid(this.options_['fluid']);
+    this.aspectRatio(this.options_['aspectRatio']);
+
+    // insertElFirst seems to cause the networkState to flicker from 3 to 2, so
     // keep track of the original for later so we can know if the source originally failed
     tag.initNetworkState_ = tag.networkState;
 
@@ -235,11 +276,134 @@ class Player extends Component {
     if (tag.parentNode) {
       tag.parentNode.insertBefore(el, tag);
     }
-    Lib.insertFirst(tag, el); // Breaks iPhone, fixed in HTML5 setup.
+    Dom.insertElFirst(tag, el); // Breaks iPhone, fixed in HTML5 setup.
 
     this.el_ = el;
 
     return el;
+  }
+
+  width(value) {
+    return this.dimension('width', value);
+  }
+
+  height(value) {
+    return this.dimension('height', value);
+  }
+
+  dimension(dimension, value) {
+    let privDimension = dimension + '_';
+
+    if (value === undefined) {
+      return this[privDimension] || 0;
+    }
+
+    if (value === '') {
+      // If an empty string is given, reset the dimension to be automatic
+      this[privDimension] = undefined;
+    } else {
+      let parsedVal = parseFloat(value);
+
+      if (isNaN(parsedVal)) {
+        log.error(`Improper value "${value}" supplied for for ${dimension}`);
+        return this;
+      }
+
+      this[privDimension] = parsedVal;
+    }
+
+    this.updateStyleEl_();
+    return this;
+  }
+
+  fluid(bool) {
+    if (bool === undefined) {
+      return !!this.fluid_;
+    }
+
+    this.fluid_ = !!bool;
+
+    if (bool) {
+      this.addClass('vjs-fluid');
+    } else {
+      this.removeClass('vjs-fluid');
+    }
+  }
+
+  aspectRatio(ratio) {
+    if (ratio === undefined) {
+      return this.aspectRatio_;
+    }
+
+    // Check for width:height format
+    if (!/^\d+\:\d+$/.test(ratio)) {
+      throw new Error('Improper value suplied for aspect ratio. The format should be width:height, for example 16:9.');
+    }
+    this.aspectRatio_ = ratio;
+
+    // We're assuming if you set an aspect ratio you want fluid mode,
+    // because in fixed mode you could calculate width and height yourself.
+    this.fluid(true);
+
+    this.updateStyleEl_();
+  }
+
+  updateStyleEl_() {
+    let width;
+    let height;
+    let aspectRatio;
+
+    // The aspect ratio is either used directly or to calculate width and height.
+    if (this.aspectRatio_ !== undefined && this.aspectRatio_ !== 'auto') {
+      // Use any aspectRatio that's been specifically set
+      aspectRatio = this.aspectRatio_;
+    } else if (this.videoWidth()) {
+      // Otherwise try to get the aspect ratio from the video metadata
+      aspectRatio = this.videoWidth() + ':' + this.videoHeight();
+    } else {
+      // Or use a default. The video element's is 2:1, but 16:9 is more common.
+      aspectRatio = '16:9';
+    }
+
+    // Get the ratio as a decimal we can use to calculate dimensions
+    let ratioParts = aspectRatio.split(':');
+    let ratioMultiplier = ratioParts[1] / ratioParts[0];
+
+    if (this.width_ !== undefined) {
+      // Use any width that's been specifically set
+      width = this.width_;
+    } else if (this.height_ !== undefined) {
+      // Or calulate the width from the aspect ratio if a height has been set
+      width = this.height_ / ratioMultiplier;
+    } else {
+      // Or use the video's metadata, or use the video el's default of 300
+      width = this.videoWidth() || 300;
+    }
+
+    if (this.height_ !== undefined) {
+      // Use any height that's been specifically set
+      height = this.height_;
+    } else {
+      // Otherwise calculate the height from the ratio and the width
+      height = width * ratioMultiplier;
+    }
+
+    let idClass = this.id()+'-dimensions';
+
+    // Ensure the right class is still on the player for the style element
+    this.addClass(idClass);
+
+    // Create the width/height CSS
+    var css = `.${idClass} { width: ${width}px; height: ${height}px; }`;
+    // Add the aspect ratio CSS for when using a fluid layout
+    css += `.${idClass}.vjs-fluid { padding-top: ${ratioMultiplier * 100}%; }`;
+
+    // Update the style el
+    if (this.styleEl_.styleSheet){
+      this.styleEl_.styleSheet.cssText = css;
+    } else {
+      this.styleEl_.innerHTML = css;
+    }
   }
 
   /**
@@ -266,15 +430,20 @@ class Player extends Component {
     // Turn off API access because we're loading a new tech that might load asynchronously
     this.isReady_ = false;
 
-    var techReady = Lib.bind(this, function() {
+    var techReady = Fn.bind(this, function() {
       this.triggerReady();
     });
 
     // Grab tech-specific options from player options and add source and parent element to use.
-    var techOptions = Lib.obj.merge({
+    var techOptions = assign({
       'source': source,
       'playerId': this.id(),
-      'textTracks': this.textTracks_
+      'techId': `${this.id()}_${techName}_api`,
+      'textTracks': this.textTracks_,
+      'autoplay': this.options_.autoplay,
+      'preload': this.options_.preload,
+      'loop': this.options_.loop,
+      'muted': this.options_.muted
     }, this.options_[techName.toLowerCase()]);
 
     if (this.tag) {
@@ -323,6 +492,7 @@ class Player extends Component {
     this.on(this.tech, 'ratechange', this.handleTechRateChange);
     this.on(this.tech, 'volumechange', this.handleTechVolumeChange);
     this.on(this.tech, 'texttrackchange', this.onTextTrackChange);
+    this.on(this.tech, 'loadedmetadata', this.updateStyleEl_);
 
     if (this.controls() && !this.usingNativeControls()) {
       this.addTechControlsListeners();
@@ -331,7 +501,7 @@ class Player extends Component {
     // Add the tech element in the DOM if it was not already there
     // Make sure to not insert the original video element if using Html5
     if (this.tech.el().parentNode !== this.el() && (techName !== 'Html5' || !this.tag)) {
-      Lib.insertFirst(this.tech.el(), this.el());
+      Dom.insertElFirst(this.tech.el(), this.el());
     }
 
     // Get rid of the original video tag reference after the first tech is loaded
@@ -367,9 +537,6 @@ class Player extends Component {
     this.on(this.tech, 'touchstart', this.handleTechTouchStart);
     this.on(this.tech, 'touchmove', this.handleTechTouchMove);
     this.on(this.tech, 'touchend', this.handleTechTouchEnd);
-
-    // Turn on component tap events
-    this.tech.emitTapEvents();
 
     // The tap listener needs to come after the touchend listener because the tap
     // listener cancels out any reportedUserActivity when setting userActive(false)
@@ -797,7 +964,7 @@ class Player extends Component {
       try {
         this.tech[method](arg);
       } catch(e) {
-        Lib.log(e);
+        log(e);
         throw e;
       }
     }
@@ -815,14 +982,14 @@ class Player extends Component {
       } catch(e) {
         // When building additional tech libs, an expected method may not be defined yet
         if (this.tech[method] === undefined) {
-          Lib.log(`Video.js: ${method} method not defined for ${this.techName} playback technology.`, e);
+          log(`Video.js: ${method} method not defined for ${this.techName} playback technology.`, e);
         } else {
           // When a method isn't available on the object it throws a TypeError
           if (e.name === 'TypeError') {
-            Lib.log(`Video.js: ${method} unavailable on ${this.techName} playback technology element.`, e);
+            log(`Video.js: ${method} unavailable on ${this.techName} playback technology element.`, e);
             this.tech.isReady_ = false;
           } else {
-            Lib.log(e);
+            log(e);
           }
         }
         throw e;
@@ -989,7 +1156,7 @@ class Player extends Component {
     var buffered = this.techGet('buffered');
 
     if (!buffered || !buffered.length) {
-      buffered = Lib.createTimeRange(0,0);
+      buffered = createTimeRange(0,0);
     }
 
     return buffered;
@@ -1006,28 +1173,7 @@ class Player extends Component {
    * @return {Number} A decimal between 0 and 1 representing the percent
    */
   bufferedPercent() {
-    var duration = this.duration(),
-        buffered = this.buffered(),
-        bufferedDuration = 0,
-        start, end;
-
-    if (!duration) {
-      return 0;
-    }
-
-    for (var i=0; i<buffered.length; i++){
-      start = buffered.start(i);
-      end   = buffered.end(i);
-
-      // buffered end can be bigger than duration by a very small fraction
-      if (end > duration) {
-        end = duration;
-      }
-
-      bufferedDuration += end - start;
-    }
-
-    return bufferedDuration / duration;
+    return bufferedPercent(this.buffered(), this.duration());
   }
 
   /**
@@ -1070,7 +1216,7 @@ class Player extends Component {
       vol = Math.max(0, Math.min(1, parseFloat(percentAsDecimal))); // Force value to between 0 and 1
       this.cache_.volume = vol;
       this.techCall('setVolume', vol);
-      Lib.setLocalStorage('volume', vol);
+
       return this;
     }
 
@@ -1137,7 +1283,7 @@ class Player extends Component {
    * @deprecated for lowercase 's' version
    */
   isFullScreen(isFS) {
-    Lib.log.warn('player.isFullScreen() has been deprecated, use player.isFullscreen() with a lowercase "s")');
+    log.warn('player.isFullScreen() has been deprecated, use player.isFullscreen() with a lowercase "s")');
     return this.isFullscreen(isFS);
   }
 
@@ -1160,7 +1306,7 @@ class Player extends Component {
 
     this.isFullscreen(true);
 
-    if (fsApi) {
+    if (fsApi.requestFullscreen) {
       // the browser supports going fullscreen at the element level so we can
       // take the controls fullscreen as well as the video
 
@@ -1169,7 +1315,7 @@ class Player extends Component {
       // when canceling fullscreen. Otherwise if there's multiple
       // players on a page, they would all be reacting to the same fullscreen
       // events
-      Events.on(document, fsApi['fullscreenchange'], Lib.bind(this, function documentFullscreenChange(e){
+      Events.on(document, fsApi['fullscreenchange'], Fn.bind(this, function documentFullscreenChange(e){
         this.isFullscreen(document[fsApi.fullscreenElement]);
 
         // If cancelling fullscreen, remove event listener.
@@ -1201,7 +1347,7 @@ class Player extends Component {
    * @deprecated for lower case 's' version
    */
   requestFullScreen() {
-    Lib.log.warn('player.requestFullScreen() has been deprecated, use player.requestFullscreen() with a lowercase "s")');
+    log.warn('player.requestFullScreen() has been deprecated, use player.requestFullscreen() with a lowercase "s")');
     return this.requestFullscreen();
   }
 
@@ -1217,7 +1363,7 @@ class Player extends Component {
     this.isFullscreen(false);
 
     // Check for browser element fullscreen support
-    if (fsApi) {
+    if (fsApi.requestFullscreen) {
       document[fsApi.exitFullscreen]();
     } else if (this.tech.supportsFullScreen()) {
      this.techCall('exitFullScreen');
@@ -1234,7 +1380,7 @@ class Player extends Component {
    * @deprecated for exitFullscreen
    */
   cancelFullScreen() {
-    Lib.log.warn('player.cancelFullScreen() has been deprecated, use player.exitFullscreen()');
+    log.warn('player.cancelFullScreen() has been deprecated, use player.exitFullscreen()');
     return this.exitFullscreen();
   }
 
@@ -1246,13 +1392,13 @@ class Player extends Component {
     this.docOrigOverflow = document.documentElement.style.overflow;
 
     // Add listener for esc key to exit fullscreen
-    Events.on(document, 'keydown', Lib.bind(this, this.fullWindowOnEscKey));
+    Events.on(document, 'keydown', Fn.bind(this, this.fullWindowOnEscKey));
 
     // Hide any scroll bars
     document.documentElement.style.overflow = 'hidden';
 
     // Apply fullscreen styles
-    Lib.addClass(document.body, 'vjs-full-window');
+    Dom.addElClass(document.body, 'vjs-full-window');
 
     this.trigger('enterFullWindow');
   }
@@ -1275,7 +1421,7 @@ class Player extends Component {
     document.documentElement.style.overflow = this.docOrigOverflow;
 
     // Remove fullscreen styles
-    Lib.removeClass(document.body, 'vjs-full-window');
+    Dom.removeElClass(document.body, 'vjs-full-window');
 
     // Resize the box, controller, and poster to original sizes
     // this.positionAll();
@@ -1285,12 +1431,12 @@ class Player extends Component {
   selectSource(sources) {
     // Loop through each playback technology in the options order
     for (var i=0,j=this.options_['techOrder'];i<j.length;i++) {
-      let techName = Lib.capitalize(j[i]);
+      let techName = toTitleCase(j[i]);
       let tech = Component.getComponent(techName);
 
       // Check if the current tech is defined before continuing
       if (!tech) {
-        Lib.log.error(`The "${techName}" tech is undefined. Skipped browser support check for that tech.`);
+        log.error(`The "${techName}" tech is undefined. Skipped browser support check for that tech.`);
         continue;
       }
 
@@ -1343,11 +1489,15 @@ class Player extends Component {
    * @return {String} The current video source when getting
    * @return {String} The player when setting
    */
-  src(source=this.techGet('src')) {
+  src(source) {
+    if (source === undefined) {
+      return this.techGet('src');
+    }
+
     let currentTech = Component.getComponent(this.techName);
 
     // case: Array of source objects to choose from and pick the best to play
-    if (Lib.obj.isArray(source)) {
+    if (Array.isArray(source)) {
       this.sourceList_(source);
 
     // case: URL String (http://myvideo...)
@@ -1413,7 +1563,7 @@ class Player extends Component {
     } else {
       // We need to wrap this in a timeout to give folks a chance to add error event handlers
       this.setTimeout( function() {
-        this.error({ code: 4, message: this.localize(this.options()['notSupportedMessage']) });
+        this.error({ code: 4, message: this.localize(this.options_['notSupportedMessage']) });
       }, 0);
 
       // we could not find an appropriate tech, but let's still notify the delegate that this is it
@@ -1651,7 +1801,7 @@ class Player extends Component {
 
     // log the name of the error type and any message
     // ie8 just logs "[object object]" if you just log the error object
-    Lib.log.error(`(CODE:${this.error_.code} ${MediaError.errorTypes[this.error_.code]})`, this.error_.message, this.error_);
+    log.error(`(CODE:${this.error_.code} ${MediaError.errorTypes[this.error_.code]})`, this.error_.message, this.error_);
 
     return this;
   }
@@ -1667,6 +1817,13 @@ class Player extends Component {
    * @return {Boolean} True if the player is in the seeking state, false if not.
    */
   seeking() { return this.techGet('seeking'); }
+
+  /**
+   * Returns the TimeRanges of the media that are currently available
+   * for seeking to.
+   * @return {TimeRanges} the seekable intervals of the media timeline
+   */
+  seekable() { return this.techGet('seekable'); }
 
   reportUserActivity(event) {
     this.userActivity_ = true;
@@ -1717,7 +1874,7 @@ class Player extends Component {
   listenForUserActivity() {
     let mouseInProgress, lastMoveX, lastMoveY;
 
-    let handleActivity = Lib.bind(this, this.reportUserActivity);
+    let handleActivity = Fn.bind(this, this.reportUserActivity);
 
     let handleMouseMove = function(e) {
       // #1068 - Prevent mousemove spamming
@@ -1776,7 +1933,7 @@ class Player extends Component {
         // Clear any existing inactivity timeout to start the timer over
         this.clearTimeout(inactivityTimeout);
 
-        var timeout = this.options()['inactivityTimeout'];
+        var timeout = this.options_['inactivityTimeout'];
         if (timeout > 0) {
           // In <timeout> milliseconds, if no more activity has occurred the
           // user will be considered inactive
@@ -1922,6 +2079,14 @@ class Player extends Component {
     this.tech && this.tech['removeRemoteTextTrack'](track);
   }
 
+  videoWidth() {
+    return this.tech && this.tech.videoWidth && this.tech.videoWidth() || 0;
+  }
+
+  videoHeight() {
+    return this.tech && this.tech.videoHeight && this.tech.videoHeight() || 0;
+  }
+
   // Methods to add support for
   // initialTime: function(){ return this.techCall('initialTime'); },
   // startOffsetTime: function(){ return this.techCall('startOffsetTime'); },
@@ -1929,8 +2094,6 @@ class Player extends Component {
   // seekable: function(){ return this.techCall('seekable'); },
   // videoTracks: function(){ return this.techCall('videoTracks'); },
   // audioTracks: function(){ return this.techCall('audioTracks'); },
-  // videoWidth: function(){ return this.techCall('videoWidth'); },
-  // videoHeight: function(){ return this.techCall('videoHeight'); },
   // defaultPlaybackRate: function(){ return this.techCall('defaultPlaybackRate'); },
   // mediaGroup: function(){ return this.techCall('mediaGroup'); },
   // controller: function(){ return this.techCall('controller'); },
@@ -1942,28 +2105,35 @@ class Player extends Component {
 
   /**
    * The player's language code
-   * @param  {String} languageCode  The locale string
-   * @return {String}             The locale string when getting
-   * @return {Player}         self, when setting
+   *
+   * NOTE: The language should be set in the player options if you want the
+   * the controls to be built with a specific language. Changing the lanugage
+   * later will not update controls text.
+   *
+   * @param {String} code  The locale string
+   * @return {String}      The locale string when getting
+   * @return {Player}      self, when setting
    */
-  language(languageCode) {
-    if (languageCode === undefined) {
+  language(code) {
+    if (code === undefined) {
       return this.language_;
     }
 
-    this.language_ = languageCode;
+    this.language_ = (''+code).toLowerCase();
     return this;
   }
 
   /**
    * Get the player's language dictionary
+   * Merge every time, because a newly added plugin might call videojs.addLanguage() at any time
+   * Languages specified directly in the player options have precedence
    */
   languages() {
-    return this.languages_;
+    return  mergeOptions(globalOptions['languages'], this.languages_);
   }
 
   toJSON() {
-    let options = Lib.obj.deepMerge({}, this.options());
+    let options = mergeOptions(this.options_);
     let tracks = options.tracks;
 
     options.tracks = [];
@@ -1972,7 +2142,7 @@ class Player extends Component {
       let track = tracks[i];
 
       // deep merge tracks and null out player so no circular references
-      track = Lib.obj.deepMerge({}, track);
+      track = mergeOptions(track);
       track.player = undefined;
       options.tracks[i] = track;
     }
@@ -1986,7 +2156,7 @@ class Player extends Component {
       'tracks': []
     };
 
-    const tagOptions = Lib.getElementAttributes(tag);
+    const tagOptions = Dom.getElAttributes(tag);
     const dataSetup = tagOptions['data-setup'];
 
     // Check if data-setup attr exists.
@@ -1995,12 +2165,12 @@ class Player extends Component {
       // If empty string, make it a parsable json object.
       const [err, data] = safeParseTuple(dataSetup || '{}');
       if (err) {
-        Lib.log.error(err);
+        log.error(err);
       }
-      Lib.obj.merge(tagOptions, data);
+      assign(tagOptions, data);
     }
 
-    Lib.obj.merge(baseOptions, tagOptions);
+    assign(baseOptions, tagOptions);
 
     // Get tag children settings
     if (tag.hasChildNodes()) {
@@ -2011,9 +2181,9 @@ class Player extends Component {
         // Change case needed: http://ejohn.org/blog/nodename-case-sensitivity/
         const childName = child.nodeName.toLowerCase();
         if (childName === 'source') {
-          baseOptions['sources'].push(Lib.getElementAttributes(child));
+          baseOptions['sources'].push(Dom.getElAttributes(child));
         } else if (childName === 'track') {
-          baseOptions['tracks'].push(Lib.getElementAttributes(child));
+          baseOptions['tracks'].push(Dom.getElAttributes(child));
         }
       }
     }
@@ -2038,7 +2208,7 @@ Player.players = {};
  * @type {Object}
  * @private
  */
-Player.prototype.options_ = Options;
+Player.prototype.options_ = globalOptions;
 
 /**
  * Fired when the player has initial duration and dimension information
@@ -2094,10 +2264,13 @@ Player.prototype.handleError;
 Player.prototype.flexNotSupported_ = function() {
   var elem = document.createElement('i');
 
+  // Note: We don't actually use flexBasis (or flexOrder), but it's one of the more
+  // common flex features that we can rely on when checking for flex support.
   return !('flexBasis' in elem.style ||
           'webkitFlexBasis' in elem.style ||
           'mozFlexBasis' in elem.style ||
-          'msFlexBasis' in elem.style);
+          'msFlexBasis' in elem.style ||
+          'msFlexOrder' in elem.style /* IE10-specific (2012 flex spec) */);
 };
 
 Component.registerComponent('Player', Player);

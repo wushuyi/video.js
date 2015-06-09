@@ -1,4 +1,5 @@
-import Button from '../button';
+import Button from '../button.js';
+import Component from '../component.js';
 
 /**
  * Toggle fullscreen video
@@ -16,16 +17,16 @@ class FullscreenToggle extends Button {
   handleClick() {
     if (!this.player_.isFullscreen()) {
       this.player_.requestFullscreen();
-      this.controlText_.innerHTML = this.localize('Non-Fullscreen');
+      this.controlText('Non-Fullscreen');
     } else {
       this.player_.exitFullscreen();
-      this.controlText_.innerHTML = this.localize('Fullscreen');
+      this.controlText('Fullscreen');
     }
   }
 
 }
 
-FullscreenToggle.prototype.buttonText = 'Fullscreen';
+FullscreenToggle.prototype.controlText_ = 'Fullscreen';
 
-Button.registerComponent('FullscreenToggle', FullscreenToggle);
+Component.registerComponent('FullscreenToggle', FullscreenToggle);
 export default FullscreenToggle;

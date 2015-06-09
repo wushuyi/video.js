@@ -1,11 +1,15 @@
 @import "variables";
 @import "utilities";
 
-@import "components/icons";
+$icon-font-path: 'font';
+@import "../../node_modules/videojs-font/scss/icons";
+
 @import "components/layout";
 @import "components/big-play";
+@import "components/button";
 @import "components/control-bar";
 @import "components/control";
+@import "components/control-spacer";
 @import "components/progress";
 @import "components/slider";
 @import "components/volume";

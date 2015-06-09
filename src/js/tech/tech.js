@@ -6,7 +6,10 @@
 import Component from '../component';
 import TextTrack from '../tracks/text-track';
 import TextTrackList from '../tracks/text-track-list';
-import * as Lib from '../lib';
+import * as Fn from '../utils/fn.js';
+import log from '../utils/log.js';
+import { createTimeRange } from '../utils/time-ranges.js';
+import { bufferedPercent } from '../utils/buffer.js';
 import window from 'global/window';
 import document from 'global/document';
 
@@ -19,7 +22,6 @@ import document from 'global/document';
 class Tech extends Component {
 
   constructor(options={}, ready=function(){}){
-    options = options || {};
     // we don't want the tech to report user activity automatically.
     // This is done manually in addControlsListeners
     options.reportTouchActivity = false;
@@ -48,6 +50,9 @@ class Tech extends Component {
     }
 
     this.initTextTrackListeners();
+
+    // Turn on component tap events
+    this.emitTapEvents();
   }
 
   /**
@@ -104,18 +109,18 @@ class Tech extends Component {
   }
 
   trackProgress() {
-    this.progressInterval = this.setInterval(Lib.bind(this, function(){
+    this.progressInterval = this.setInterval(Fn.bind(this, function(){
       // Don't trigger unless buffered amount is greater than last time
 
-      let bufferedPercent = this.bufferedPercent();
+      let numBufferedPercent = this.bufferedPercent();
 
-      if (this.bufferedPercent_ !== bufferedPercent) {
+      if (this.bufferedPercent_ !== numBufferedPercent) {
         this.trigger('progress');
       }
 
-      this.bufferedPercent_ = bufferedPercent;
+      this.bufferedPercent_ = numBufferedPercent;
 
-      if (bufferedPercent === 1) {
+      if (numBufferedPercent === 1) {
         this.stopTrackingProgress();
       }
     }), 500);
@@ -125,33 +130,12 @@ class Tech extends Component {
     this.duration_ = this.duration();
   }
 
+  buffered() {
+    return createTimeRange(0, 0);
+  }
+
   bufferedPercent() {
-    let bufferedDuration = 0,
-        start, end;
-
-    if (!this.duration_) {
-      return 0;
-    }
-
-    let buffered = this.buffered();
-
-    if (!buffered || !buffered.length) {
-      buffered = Lib.createTimeRange(0,0);
-    }
-
-    for (var i=0; i<buffered.length; i++){
-      start = buffered.start(i);
-      end   = buffered.end(i);
-
-      // buffered end can be bigger than duration by a very small fraction
-      if (end > this.duration_) {
-        end = this.duration_;
-      }
-
-      bufferedDuration += end - start;
-    }
-
-    return bufferedDuration / this.duration_;
+    return bufferedPercent(this.buffered(), this.duration_);
   }
 
   stopTrackingProgress() {
@@ -164,21 +148,6 @@ class Tech extends Component {
 
     this.on('play', this.trackCurrentTime);
     this.on('pause', this.stopTrackingCurrentTime);
-    // timeupdate is also called by .currentTime whenever current time is set
-
-    // Watch for native timeupdate event only
-    var onTimeUpdate = function(e){
-      if (e.manuallyTriggered) return;
-
-      this.off('timeupdate', onTimeUpdate);
-
-      // Update known progress support for this playback technology
-      this.featuresTimeupdateEvents = true;
-      // Turn off manual progress tracking
-      this.manualTimeUpdatesOff();
-    };
-
-    this.on('timeupdate', onTimeUpdate);
   }
 
   manualTimeUpdatesOff() {
@@ -219,7 +188,7 @@ class Tech extends Component {
   }
 
   initTextTrackListeners() {
-    let textTrackListChanges = Lib.bind(this, function() {
+    let textTrackListChanges = Fn.bind(this, function() {
       this.trigger('texttrackchange');
     });
 
@@ -230,7 +199,7 @@ class Tech extends Component {
     tracks.addEventListener('removetrack', textTrackListChanges);
     tracks.addEventListener('addtrack', textTrackListChanges);
 
-    this.on('dispose', Lib.bind(this, function() {
+    this.on('dispose', Fn.bind(this, function() {
       tracks.removeEventListener('removetrack', textTrackListChanges);
       tracks.removeEventListener('addtrack', textTrackListChanges);
     }));
@@ -250,7 +219,7 @@ class Tech extends Component {
     }
 
     let textTracksChanges = function() {
-      let updateDisplay = Lib.bind(this, function() {
+      let updateDisplay = Fn.bind(this, function() {
         this.trigger('texttrackchange');
       });
 
@@ -267,7 +236,7 @@ class Tech extends Component {
 
     tracks.addEventListener('change', textTracksChanges);
 
-    this.on('dispose', Lib.bind(this, function() {
+    this.on('dispose', Fn.bind(this, function() {
       tracks.removeEventListener('change', textTracksChanges);
     }));
   }
@@ -443,7 +412,7 @@ Tech.withSourceHandlers = function(_Tech){
       if (_Tech.nativeSourceHandler) {
         sh = _Tech.nativeSourceHandler;
       } else {
-        Lib.log.error('No source hander found for the current source.');
+        log.error('No source hander found for the current source.');
       }
     }
 
